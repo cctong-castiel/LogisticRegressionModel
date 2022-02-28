@@ -36,6 +36,30 @@ class _LogisticRegression():
         else:
             self.multi_class = True
 
+    def sigmoid(z):
+        return 1 / (1 + np.exp(-z))
+
+    def softmax(z):
+        return np.exp(z) / np.sum(np.exp(z), axis=0)
+
+    def gradients(X, y, y_hat):
+
+        m = X.shape[0]
+
+        # gradient of loss w.r.t. weights
+        dW = (1/m) * np.dot(X.T, (y_hat - y))
+
+        # gradient of loss w.r.t. bias
+        db = (1/m) * np.sum((y_hat - y))
+
+        return dW, db
+
+    def loss(y, y_hat):
+        loss = -np.mean(y*(np.log(y_hat)) - (1-y)*np.log(1-y_hat))
+        return loss
+
+
+
     def fit(self, X, y, sample_weight=None):
 
         if not isinstance(self.C, Number) or self.C < 0:
@@ -73,3 +97,9 @@ class _LogisticRegression():
 
         # check multi_class
         self._check_multi_class()
+
+        if self.multi_class is True:
+            # run softmax function
+
+        else:
+            # run sigmoid function
