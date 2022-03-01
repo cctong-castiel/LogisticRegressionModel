@@ -155,6 +155,7 @@ class _LogisticRegression():
         self._check_multi_class()
 
         # determine lambda with C and penalty
+        lambda_1, lambda_2 = self.lambda_penalty()
 
         # determine sampling weight
 
@@ -185,7 +186,6 @@ class _LogisticRegression():
 
                     # regularization
                     if self.penalty:
-                        lambda_1, lambda_2 = self.lambda_penalty()
                         regu_term = self.regularization(W, lambda_1, lambda_2)
 
                     # getting the gradient of loss w.r.t parameters
