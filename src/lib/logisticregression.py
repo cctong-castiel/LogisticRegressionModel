@@ -81,13 +81,26 @@ class _LogisticRegression():
 
         regu_term = None
         if self.penalty is "elastic":
-            regu_term = lambda_1 * np.abs(W) + lambda_2 * np.square(W)
+            regu_term = 0.5 * (lambda_1 * np.abs(W) + lambda_2 * np.square(W))
         elif self.penalty is "l1":
-            regu_term = lambda_1 * np.abs(W)
+            regu_term = 0.5 * lambda_1 * np.abs(W)
         else:
-            regu_term = lambda_2 * np.square(W)
+            regu_term = 0.5 * lambda_2 * np.square(W)
 
         return regu_term
+
+    def loss_beta_term(self, weights: np.array,
+                       lambda_1: Union[float, None],
+                       lambda_2: Union[float, None]) -> np.array:
+
+        if self.penalty is "elastic":
+            regu_loss = 0.5 * (lambda_1 * np.abs(weights) + lambda_2 * np.square(weights))
+        elif self.penalty is "l1":
+            regu_loss = 0.5 * lambda_1 * np.abs(weights)
+        else:
+            regu_loss = 0.5 * lambda_2 * np.square(weights)
+
+        return regu_loss
 
     @staticmethod
     def gradients(X: np.ndarray, 
@@ -107,9 +120,10 @@ class _LogisticRegression():
 
     @staticmethod
     def loss(y: np.array,
-             y_hat: np.array) -> np.ndarray:
+             y_hat: np.array,
+             regu_loss: np.array) -> np.ndarray:
 
-        loss = -np.mean(y*(np.log(y_hat)) - (1-y)*np.log(1-y_hat))
+        loss = -np.mean(y*(np.log(y_hat)) - (1-y)*np.log(1-y_hat)) + regu_loss
 
         return loss
 
@@ -169,6 +183,9 @@ class _LogisticRegression():
         # normalize the inputs
         X = self.normalize(X)
 
+        # losses and weights
+        losses = []
+
         if self.multi_class is True:
             # run softmax function
 
@@ -195,6 +212,10 @@ class _LogisticRegression():
                     W -= self.lr * dW
                     b -= self.lr * db
 
+                losses.append(
+                    self.loss(y, self.softmax(np.dot(X, W) + b), regu_term)
+                )
+                
         else:
             # run sigmoid function
 
@@ -212,7 +233,6 @@ class _LogisticRegression():
 
                     # regularization
                     if self.penalty:
-                        lambda_1, lambda_2 = self.lambda_penalty()
                         regu_term = self.regularization(W, lambda_1, lambda_2)
 
                     # getting the gradient of loss w.r.t parameters
@@ -222,4 +242,10 @@ class _LogisticRegression():
                     W -= self.lr * dW
                     b -= self.lr * db
             
+                losses.append(
+                        self.loss(y, self.sigmoid(np.dot(X, W) + b), regu_term)
+                    )
+
         return W, b
+
+
