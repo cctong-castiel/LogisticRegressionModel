@@ -26,7 +26,7 @@ def main():
     X_test = np.random.randint(1, 10, (5,2))
 
     # train model
-    lg_clf = _LogisticRegression()
+    lg_clf = _LogisticRegression(random_state=seed)
     lg_clf.fit(X_train, y_train)
 
     # predict
