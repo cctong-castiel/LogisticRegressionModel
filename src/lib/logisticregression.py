@@ -27,6 +27,7 @@ class _LogisticRegression():
         self.l1_ratio = l1_ratio
         self.lr = lr
         self.multi_class = True
+        self.id_2_class = None
         
 
     def _check_multi_class(self):
@@ -42,6 +43,10 @@ class _LogisticRegression():
             self.multi_class = False
         else:
             self.multi_class = True
+            d_id_class = {}
+            for index, y_ in enumerate(self.classes_):
+                d_id_class[index] = y_
+            self.id_2_class = d_id_class
 
     @staticmethod
     def normalize(X: np.ndarray) -> np.ndarray:
@@ -129,8 +134,7 @@ class _LogisticRegression():
 
     def fit(self, 
             X: np.ndarray,
-            y: np.array,
-            sample_weight: Union[float, None]=None) -> np.ndarray:
+            y: np.array) -> np.ndarray:
 
         if not isinstance(self.C, Number) or self.C < 0:
             raise ValueError(
@@ -177,8 +181,8 @@ class _LogisticRegression():
         m, n = X.shape
 
         # initializing weights and bias to zeros
-        W = np.zeros((n, 1))
-        b = 0
+        self.W = np.zeros((n, 1))
+        self.b = 0
 
         # normalize the inputs
         X = self.normalize(X)
@@ -199,22 +203,22 @@ class _LogisticRegression():
                     xb, yb = X[start_i:end_i], y[start_i:end_i]
 
                     # softmax function
-                    y_hat = self.softmax(np.dot(xb, W) + yb)
+                    y_hat = self.softmax(np.dot(xb, self.W) + yb)
 
                     # regularization
                     if self.penalty:
-                        regu_term = self.regularization(W, lambda_1, lambda_2)
+                        regu_term = self.regularization(self.W, lambda_1, lambda_2)
 
                     # getting the gradient of loss w.r.t parameters
                     dW, db = self.gradients(xb, yb, y_hat, regu_term)
 
                     # updating the parameters
-                    W -= self.lr * dW
-                    b -= self.lr * db
+                    self.W -= self.lr * dW
+                    self.b -= self.lr * db
 
-                losses.append(
-                    self.loss(y, self.softmax(np.dot(X, W) + b), regu_term)
-                )
+                loss = self.loss(y, self.softmax(np.dot(X, self.W) + self.b), regu_term)
+                losses.append(loss)
+                print(f"loss in {iter_} is: {loss}")
                 
         else:
             # run sigmoid function
@@ -229,23 +233,49 @@ class _LogisticRegression():
                     xb, yb = X[start_i:end_i], y[start_i:end_i]
 
                     # sigmoid function
-                    y_hat = self.sigmoid(np.dot(xb, W) + yb)
+                    y_hat = self.sigmoid(np.dot(xb, self.W) + yb)
 
                     # regularization
                     if self.penalty:
-                        regu_term = self.regularization(W, lambda_1, lambda_2)
+                        regu_term = self.regularization(self.W, lambda_1, lambda_2)
 
                     # getting the gradient of loss w.r.t parameters
                     dW, db = self.gradients(xb, yb, y_hat, regu_term)
 
                     # updating the parameters
-                    W -= self.lr * dW
-                    b -= self.lr * db
+                    self.W -= self.lr * dW
+                    self.b -= self.lr * db
+                
+                loss = self.loss(y, self.sigmoid(np.dot(X, self.W) + self.b), regu_term)
+                losses.append(loss)
+                print(f"loss in {iter_} is: {loss}")
+
+        return self.W, self.b
+
+    def predict_proba(self, X):
+
+        # normalizing
+        X = self.normalize(X)
+
+        if self.multi_class:
+            preds = self.softmax(np.dot(X, self.W) + self.b)
+        else:
+            preds = self.sigmoid(np.dot(X, self.W) + self.b)
+
+        return preds
+
+    def predict(self, X):
+
+        pred = np.ndarray(X.shape[0])
+
+        preds = self.predict_proba(X)
+
+        if self.multi_class:
+            max_prop = np.argmax(preds, axis=0)
             
-                losses.append(
-                        self.loss(y, self.sigmoid(np.dot(X, W) + b), regu_term)
-                    )
-
-        return W, b
-
-
+            for index in self.id_2_class:
+                pred[max_prop == index] = self.id_2_class[index]                             
+        else:
+            pred = np.where(preds > 0.5, 1, 0)
+        
+        return pred
