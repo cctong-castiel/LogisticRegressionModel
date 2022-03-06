@@ -1,8 +1,11 @@
-from typing import Text, Union
+from typing import Text, Union, List
 import numpy as np
-import warning
-from number import Number
+import warnings
+from numbers import Number
+import multiprocessing
+from joblib import Parallel, delayed
 
+cpu = multiprocessing.cpu_count() - 1
 
 class _LogisticRegression():
 
@@ -132,6 +135,115 @@ class _LogisticRegression():
 
         return loss
 
+    def train_softmax(self,
+                      X: np.ndarray,
+                      y: np.array,
+                      index: int,
+                      i: int,
+                      lambda_1: Union[float, None],
+                      lambda_2: Union[float, None]):
+
+        # defining batches 
+        start_i = i * self.batch_size
+        end_i = start_i + self.batch_size
+        xb, yb = X[start_i:end_i], y[start_i:end_i]
+
+        # softmax function
+        y_hat = self.softmax(np.dot(xb, self.W[index]) + yb)
+
+        # regularization
+        if self.penalty:
+            regu_term = self.regularization(self.W[index], lambda_1, lambda_2)
+
+        # getting the gradient of loss w.r.t parameters
+        dW, db = self.gradients(xb, yb, y_hat, regu_term)
+
+        # updating the parameters
+        print(f"softmax path shape of dW: {dW.shape}")
+        print(f"softmax path shape of db: {db.shape}")
+        
+        yield dW, db, regu_term
+
+    def train_sigmoid(self,
+                      X: np.ndarray,
+                      y: np.array,
+                      i: int,
+                      lambda_1: Union[float, None],
+                      lambda_2: Union[float, None]):
+        
+        # defining batches 
+        start_i = i * self.batch_size
+        end_i = start_i + self.batch_size
+        xb, yb = X[start_i:end_i], y[start_i:end_i]
+
+        # sigmoid function
+        y_hat = self.sigmoid(np.dot(xb, self.W) + yb)
+
+        # regularization
+        if self.penalty:
+            regu_term = self.regularization(self.W, lambda_1, lambda_2)
+
+        # getting the gradient of loss w.r.t parameters
+        dW, db = self.gradients(xb, yb, y_hat, regu_term)
+
+        # updating the parameters
+        print(f"sigmoid path shape of dW: {dW.shape}")
+        print(f"sigmoid path shape of db: {db.shape}")
+
+        yield dW, db, regu_term
+
+    def softmax_pipe(self,
+                     iter_: int,
+                     m: int,
+                     X: np.ndarray,
+                     y: np.array,
+                     lambda_1: Union[float, None],
+                     lambda_2: Union[float, None],
+                     losses: List[float]):
+
+        for index, y_idx in enumerate(self.classes_):
+
+            X_ = X[y == y_idx, :]
+            y_ = y[y == y_idx]
+
+            print(f"X_: {X_}\n y_: {y_}")
+
+            for i in range((m-1) // self.batch_size + 1):
+                
+                dW, db, regu_term = next(self.train_softmax(
+                    X_, y_, index, i, lambda_1, lambda_2
+                ))
+
+                self.W[index] -= self.lr * dW
+                self.b[index] -= self.lr * db
+                
+            loss = self.loss(y, self.softmax(np.dot(X, self.W[index]) + self.b[index]), regu_term)
+            losses.append(loss)
+            print(f"loss in {iter_} is: {loss}")
+
+    def sigmoid_pipe(self, 
+                     iter_: int,
+                     m: int,
+                     X: np.ndarray,
+                     y: np.array,
+                     lambda_1: Union[float, None],
+                     lambda_2: Union[float, None],
+                     losses: List[float]):
+
+        for i in range((m-1) // self.batch_size + 1):
+
+            dW, db, regu_term = next(self.train_sigmoid(
+                X, y, i, lambda_1, lambda_2
+            ))
+
+            self.W -= self.lr * dW
+            self.b -= self.lr * db
+    
+        loss = self.loss(y, self.sigmoid(np.dot(X, self.W) + self.b), regu_term)
+        losses.append(loss)
+        print(f"loss in {iter_} is: {loss}")
+
+
     def fit(self, 
             X: np.ndarray,
             y: np.array) -> np.ndarray:
@@ -141,7 +253,7 @@ class _LogisticRegression():
                 "Penalty term must be positive; got (C=%r)" % self.C)
 
         if self.l1_ratio is not None:
-            warning.warn(
+            warnings.warn(
                 "l1_ratio parameter is only used when penalty is 'elasticnet'. Got "
                 "(penalty=%s)" % self.penalty
             )
@@ -157,7 +269,7 @@ class _LogisticRegression():
 
         if self.penalty is "none":
             if self.C is not 1.0:
-                warning.warn(
+                warnings.warn(
                     "Setting penalty='none' will ignore the C and l1_ratio parameters"
                 )
                 # Note that check for l1_ratio is done right above
@@ -167,7 +279,15 @@ class _LogisticRegression():
             C_ = self.C
             penalty = self.penalty
 
+        # set variables
+        d_id_class = {}
+        m, n = X.shape
         self.classes_ = np.unique(y)
+        y_classes = len(self.classes_)
+
+        for index, y_ in enumerate(self.classes_):
+            d_id_class[index] = y_
+        self.id_2_class = d_id_class
 
         # check multi_class
         self._check_multi_class()
@@ -177,12 +297,13 @@ class _LogisticRegression():
 
         # determine sampling weight
 
-        # get observation and feature number 
-        m, n = X.shape
-
         # initializing weights and bias to zeros
-        self.W = np.zeros((n, 1))
-        self.b = 0
+        if self.multi_class:
+            self.W = np.zeros((y_classes, n))
+            self.b = np.zeros(y_classes)
+        else:
+            self.W = np.zeros((n))
+            self.b = 0
 
         # normalize the inputs
         X = self.normalize(X)
@@ -193,62 +314,24 @@ class _LogisticRegression():
         if self.multi_class is True:
             # run softmax function
 
-            for iter_ in range(self.max_iter):
-                
-                for i in range((m-1) // self.batch_size + 1):
+            Parallel(
+                n_jobs=cpu,
+                backend="threading"
+            )(delayed(self.softmax_pipe)(
+                    iter_, m, X, y, lambda_1, lambda_2, losses
+                )
+            for iter_ in range(self.max_iter))  
 
-                    # defining batches 
-                    start_i = i * self.batch_size
-                    end_i = start_i + self.batch_size
-                    xb, yb = X[start_i:end_i], y[start_i:end_i]
-
-                    # softmax function
-                    y_hat = self.softmax(np.dot(xb, self.W) + yb)
-
-                    # regularization
-                    if self.penalty:
-                        regu_term = self.regularization(self.W, lambda_1, lambda_2)
-
-                    # getting the gradient of loss w.r.t parameters
-                    dW, db = self.gradients(xb, yb, y_hat, regu_term)
-
-                    # updating the parameters
-                    self.W -= self.lr * dW
-                    self.b -= self.lr * db
-
-                loss = self.loss(y, self.softmax(np.dot(X, self.W) + self.b), regu_term)
-                losses.append(loss)
-                print(f"loss in {iter_} is: {loss}")
-                
         else:
             # run sigmoid function
 
-            for iter_ in range(self.max_iter):
-                
-                for i in range((m-1) // self.batch_size + 1):
-
-                    # defining batches 
-                    start_i = i * self.batch_size
-                    end_i = start_i + self.batch_size
-                    xb, yb = X[start_i:end_i], y[start_i:end_i]
-
-                    # sigmoid function
-                    y_hat = self.sigmoid(np.dot(xb, self.W) + yb)
-
-                    # regularization
-                    if self.penalty:
-                        regu_term = self.regularization(self.W, lambda_1, lambda_2)
-
-                    # getting the gradient of loss w.r.t parameters
-                    dW, db = self.gradients(xb, yb, y_hat, regu_term)
-
-                    # updating the parameters
-                    self.W -= self.lr * dW
-                    self.b -= self.lr * db
-                
-                loss = self.loss(y, self.sigmoid(np.dot(X, self.W) + self.b), regu_term)
-                losses.append(loss)
-                print(f"loss in {iter_} is: {loss}")
+            Parallel(
+                n_jobs=cpu,
+                backend="threading"
+            )(delayed(self.sigmoid_pipe)(
+                    iter_, m, X, y, lambda_1, lambda_2, losses
+                )
+            for iter_ in range(self.max_iter))
 
         return self.W, self.b
 
@@ -258,11 +341,18 @@ class _LogisticRegression():
         X = self.normalize(X)
 
         if self.multi_class:
-            preds = self.softmax(np.dot(X, self.W) + self.b)
-        else:
-            preds = self.sigmoid(np.dot(X, self.W) + self.b)
+            arr_prop = np.zeros((len(self.classes_), X.shape[0]))
 
-        return preds
+            for k, v in self.id_2_class.items():
+                arr_prop[k] = self.softmax(np.dot(X, self.W[k]) + self.b[k])
+                print(f"arr_prop now: {arr_prop}")
+            
+            arr_prop = arr_prop.T
+
+        else:
+            arr_prop = self.sigmoid(np.dot(X, self.W) + self.b)
+
+        return arr_prop
 
     def predict(self, X):
 
@@ -271,6 +361,7 @@ class _LogisticRegression():
         preds = self.predict_proba(X)
 
         if self.multi_class:
+            preds = preds.T
             max_prop = np.argmax(preds, axis=0)
             
             for index in self.id_2_class:

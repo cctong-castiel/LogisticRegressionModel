@@ -20,13 +20,14 @@ def main():
         [7.792783481,3.424088941],
         [7.939820817,0.791637231],
         [3.662294042,4.66667911]])
-    y_train = np.array([0,0,0,0,0,1,1,1,1,1,0])
-
+    y_train = np.array([0,0,0,0,0,1,1,1,2,2,2])
     
     X_test = np.random.randint(1, 10, (5,2))
 
+    print(f"X_test: {X_test}")
+
     # train model
-    lg_clf = _LogisticRegression(random_state=seed)
+    lg_clf = _LogisticRegression(random_state=seed, max_iter=10)
     lg_clf.fit(X_train, y_train)
 
     # predict
