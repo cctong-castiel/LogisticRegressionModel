@@ -54,8 +54,6 @@ class _LogisticRegression():
     @staticmethod
     def normalize(X: np.ndarray) -> np.ndarray:
 
-        m, n = X.shape
-
         # normalizing all the n features of X
         X = (X - X.mean(axis=0)) / X.std(axis=0)
 
