@@ -333,7 +333,7 @@ class _LogisticRegression():
 
         return self.W, self.b
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
 
         # normalizing
         X = self.normalize(X)
@@ -352,7 +352,7 @@ class _LogisticRegression():
 
         return arr_prop
 
-    def predict(self, X):
+    def predict(self, X: np.ndarray) -> np.array:
 
         pred = np.ndarray(X.shape[0])
 
