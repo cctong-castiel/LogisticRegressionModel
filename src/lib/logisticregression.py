@@ -338,19 +338,19 @@ class _LogisticRegression():
         # normalizing
         X = self.normalize(X)
 
+        arr_prop = np.zeros((len(self.classes_), X.shape[0]))
         if self.multi_class:
-            arr_prop = np.zeros((len(self.classes_), X.shape[0]))
-
+            
             for k, v in self.id_2_class.items():
                 arr_prop[k] = self.softmax(np.dot(X, self.W[k]) + self.b[k])
                 print(f"arr_prop now: {arr_prop}")
-            
-            arr_prop = arr_prop.T
 
         else:
-            arr_prop = self.sigmoid(np.dot(X, self.W) + self.b)
+            pred = self.sigmoid(np.dot(X, self.W) + self.b)
+            arr_prop[0] = 1 - pred
+            arr_prop[1] = pred
 
-        return arr_prop
+        return arr_prop.T
 
     def predict(self, X: np.ndarray) -> np.array:
 
@@ -358,13 +358,9 @@ class _LogisticRegression():
 
         preds = self.predict_proba(X)
 
-        if self.multi_class:
-            preds = preds.T
-            max_prop = np.argmax(preds, axis=0)
-            
-            for index in self.id_2_class:
-                pred[max_prop == index] = self.id_2_class[index]                             
-        else:
-            pred = np.where(preds > 0.5, 1, 0)
+        max_prop = np.argmax(preds.T, axis=0)
+
+        for index in self.id_2_class:
+            pred[max_prop == index] = self.id_2_class[index]
         
         return pred
