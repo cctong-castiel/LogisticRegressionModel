@@ -3,7 +3,8 @@ from lib.logisticregression import _LogisticRegression
 from dotenv import load_dotenv
 import os
 
-seed = os.getenv("seed")
+load_dotenv()
+seed = int(os.getenv("seed"))
 np.random.seed(seed)
 
 def main():
