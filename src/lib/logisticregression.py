@@ -2,10 +2,13 @@ from typing import Text, Union, List
 import numpy as np
 import warnings
 from numbers import Number
+from sklearn.preprocessing import OneHotEncoder
 import multiprocessing
 from joblib import Parallel, delayed
 
 cpu = multiprocessing.cpu_count() - 1
+
+onehot_encoder = OneHotEncoder(sparse=False)
 
 class _LogisticRegression():
 
@@ -116,8 +119,11 @@ class _LogisticRegression():
 
         m = X.shape[0]
 
+        print(f"shape of regu_term: {regu_term.shape}")
+        print(f"shape of dot product: {np.dot(X.T, (y_hat - y)).shape}")
+
         # gradient of loss w.r.t. weights
-        dW = (1/m) * (np.dot(X.T, (y_hat - y)) + regu_term)
+        dW = (1/m) * np.dot(X.T, (y_hat - y)) + regu_term
 
         # gradient of loss w.r.t. bias
         db = (1/m) * np.sum((y_hat - y))
@@ -133,28 +139,30 @@ class _LogisticRegression():
 
         return loss
 
+    @staticmethod
+    def log_loss(y: np.array,
+                 y_hat: np.array,
+                 regu_loss: np.array) -> np.ndarray:
+
+        loss = -np.mean(np.log(y_hat[np.arange(len(y)), y])) + regu_loss
+
+        return loss
+
     def train_softmax(self,
                       X: np.ndarray,
                       y: np.array,
-                      index: int,
-                      i: int,
                       lambda_1: Union[float, None],
                       lambda_2: Union[float, None]):
 
-        # defining batches 
-        start_i = i * self.batch_size
-        end_i = start_i + self.batch_size
-        xb, yb = X[start_i:end_i], y[start_i:end_i]
-
         # softmax function
-        y_hat = self.softmax(np.dot(xb, self.W[index]) + yb)
+        y_hat = self.softmax(np.dot(X, self.W) + y)
 
         # regularization
         if self.penalty:
-            regu_term = self.regularization(self.W[index], lambda_1, lambda_2)
+            regu_term = self.regularization(self.W, lambda_1, lambda_2)
 
         # getting the gradient of loss w.r.t parameters
-        dW, db = self.gradients(xb, yb, y_hat, regu_term)
+        dW, db = self.gradients(X, y, y_hat, regu_term)
 
         # updating the parameters
         print(f"softmax path shape of dW: {dW.shape}")
@@ -192,32 +200,26 @@ class _LogisticRegression():
 
     def softmax_pipe(self,
                      iter_: int,
-                     m: int,
                      X: np.ndarray,
                      y: np.array,
                      lambda_1: Union[float, None],
                      lambda_2: Union[float, None],
                      losses: List[float]):
 
-        for index, y_idx in enumerate(self.classes_):
+        y_oh = onehot_encoder.fit_transform(y.reshape(-1,1))
+        print(f"self.W shape: {self.W.shape}")
 
-            X_ = X[y == y_idx, :]
-            y_ = y[y == y_idx]
+            
+        dW, db, regu_term = next(self.train_softmax(
+            X, y_oh, lambda_1, lambda_2
+        ))
 
-            print(f"X_: {X_}\n y_: {y_}")
+        self.W -= self.lr * dW
+        self.b -= self.lr * db
 
-            for i in range((m-1) // self.batch_size + 1):
-                
-                dW, db, regu_term = next(self.train_softmax(
-                    X_, y_, index, i, lambda_1, lambda_2
-                ))
-
-                self.W[index] -= self.lr * dW
-                self.b[index] -= self.lr * db
-                
-            loss = self.loss(y, self.softmax(np.dot(X, self.W[index]) + self.b[index]), regu_term)
-            losses.append(loss)
-            print(f"loss in {iter_} is: {loss}")
+        loss = self.log_loss(y, self.softmax(np.dot(X, self.W) + self.b), regu_term)
+        losses.append(loss)
+        print(f"loss in {iter_} is: {loss}")
 
     def sigmoid_pipe(self, 
                      iter_: int,
@@ -297,7 +299,7 @@ class _LogisticRegression():
 
         # initializing weights and bias to zeros
         if self.multi_class:
-            self.W = np.zeros((y_classes, n))
+            self.W = np.zeros((n, y_classes))
             self.b = np.zeros(y_classes)
         else:
             self.W = np.zeros((n))
@@ -316,7 +318,7 @@ class _LogisticRegression():
                 n_jobs=cpu,
                 backend="threading"
             )(delayed(self.softmax_pipe)(
-                    iter_, m, X, y, lambda_1, lambda_2, losses
+                    iter_, X, y, lambda_1, lambda_2, losses
                 )
             for iter_ in range(self.max_iter))  
 
@@ -341,16 +343,19 @@ class _LogisticRegression():
         arr_prop = np.zeros((len(self.classes_), X.shape[0]))
         if self.multi_class:
             
-            for k, v in self.id_2_class.items():
-                arr_prop[k] = self.softmax(np.dot(X, self.W[k]) + self.b[k])
-                print(f"arr_prop now: {arr_prop}")
+            # for k, v in self.id_2_class.items():
+            #     arr_prop[k] = self.softmax(np.dot(X, self.W[k]) + self.b[k])
+            #     print(f"arr_prop now: {arr_prop}")
+
+            arr_prop = self.softmax(np.dot(X, self.W) + self.b)
 
         else:
             pred = self.sigmoid(np.dot(X, self.W) + self.b)
             arr_prop[0] = 1 - pred
             arr_prop[1] = pred
+            arr_prop = arr_prop.T
 
-        return arr_prop.T
+        return arr_prop
 
     def predict(self, X: np.ndarray) -> np.array:
 
