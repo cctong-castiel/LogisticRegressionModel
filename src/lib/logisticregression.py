@@ -314,14 +314,6 @@ class _LogisticRegression():
         if self.multi_class is True:
             # run softmax function
 
-            # Parallel(
-            #     n_jobs=cpu,
-            #     backend="threading"
-            # )(delayed(self.softmax_pipe)(
-            #         iter_, X, y, lambda_1, lambda_2, losses
-            #     )
-            # for iter_ in range(self.max_iter))  
-
             for iter_ in range(self.max_iter):
                 self.softmax_pipe(
                     iter_, X, y, lambda_1, lambda_2, losses
