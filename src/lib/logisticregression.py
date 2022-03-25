@@ -314,13 +314,18 @@ class _LogisticRegression():
         if self.multi_class is True:
             # run softmax function
 
-            Parallel(
-                n_jobs=cpu,
-                backend="threading"
-            )(delayed(self.softmax_pipe)(
+            # Parallel(
+            #     n_jobs=cpu,
+            #     backend="threading"
+            # )(delayed(self.softmax_pipe)(
+            #         iter_, X, y, lambda_1, lambda_2, losses
+            #     )
+            # for iter_ in range(self.max_iter))  
+
+            for iter_ in range(self.max_iter):
+                self.softmax_pipe(
                     iter_, X, y, lambda_1, lambda_2, losses
                 )
-            for iter_ in range(self.max_iter))  
 
         else:
             # run sigmoid function
@@ -342,11 +347,6 @@ class _LogisticRegression():
 
         arr_prop = np.zeros((len(self.classes_), X.shape[0]))
         if self.multi_class:
-            
-            # for k, v in self.id_2_class.items():
-            #     arr_prop[k] = self.softmax(np.dot(X, self.W[k]) + self.b[k])
-            #     print(f"arr_prop now: {arr_prop}")
-
             arr_prop = self.softmax(np.dot(X, self.W) + self.b)
 
         else:
